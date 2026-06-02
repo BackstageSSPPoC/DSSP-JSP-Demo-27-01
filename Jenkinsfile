@@ -6,12 +6,14 @@ pipeline {
     }
 
     environment {
-        APP_NAME = " DSSP-JSP-Demo-27-01".toLowerCase().trim()
+        APP_NAME = "DSSP-JSP-Demo-27-01".toLowerCase().trim()
         DOCKER_IMAGE = "chaitanyapandeygspann/${APP_NAME}"
         DOCKER_TAG = "1.0.${BUILD_NUMBER}"
         IMAGE_TAG = "${DOCKER_IMAGE}:${DOCKER_TAG}"
         GITOPS_REPO = "https://github.com/BackstageSSPPoC/k8s-manifests.git"
         APP_PORTS = "8080"
+        DEPLOY_ENV = "dev"       
+        DEPLOY_NAMESPACE = "dev"
     }
 
     stages {
@@ -38,6 +40,7 @@ pipeline {
                 }
             }
         }
+
 
 // ================= CI STAGES =================
 
@@ -115,24 +118,36 @@ pipeline {
                     git clone --depth 1 https://${GITHUB_TOKEN}@github.com/BackstageSSPPoC/k8s-manifests.git
                     cd k8s-manifests
 
-                    mkdir -p apps/${APP_NAME}
-                    cp -r ../manifest-templates/* apps/${APP_NAME}/ || true
+                    # Environment specific folder
+                    mkdir -p apps/${APP_NAME}/${DEPLOY_ENV}
+                    # application.yaml argocd folder me
+                    mkdir -p argocd/
+                    cp ../manifest-templates/application.yaml argocd/${APP_NAME}-${DEPLOY_ENV}.yaml || true
+                    
+                    # deployment/service/ingress apps folder me
+                    mkdir -p apps/${APP_NAME}/${DEPLOY_ENV}
+                    cp ../manifest-templates/deployment.yaml apps/${APP_NAME}/${DEPLOY_ENV}/ || true
+                    cp ../manifest-templates/service.yaml apps/${APP_NAME}/${DEPLOY_ENV}/ || true
+                    cp ../manifest-templates/ingress.yaml apps/${APP_NAME}/${DEPLOY_ENV}/ || true
 
-                    sed -i "s|\\${APP_NAME}|${APP_NAME}|g" apps/${APP_NAME}/*.yaml || true
-                    sed -i "s|\\${DOCKER_IMAGE}|${IMAGE_TAG}|g" apps/${APP_NAME}/deployment.yaml || true
-                    sed -i "s|\\${APP_PORTS}|${APP_PORTS}|g" apps/${APP_NAME}/*.yaml || true
+                    # Replace all placeholders
+                    sed -i "s|\\${APP_NAME}|${APP_NAME}|g" apps/${APP_NAME}/${DEPLOY_ENV}/*.yaml || true
+                    sed -i "s|\\${DOCKER_IMAGE}|${IMAGE_TAG}|g" apps/${APP_NAME}/${DEPLOY_ENV}/*.yaml || true
+                    sed -i "s|\\${APP_PORT}|${APP_PORTS}|g" apps/${APP_NAME}/${DEPLOY_ENV}/*.yaml || true
+                    sed -i "s|\\${NAMESPACE}|${DEPLOY_NAMESPACE}|g" apps/${APP_NAME}/${DEPLOY_ENV}/*.yaml || true
+                    sed -i "s|\\${APP_NAME}|${APP_NAME}|g" argocd/${APP_NAME}-${DEPLOY_ENV}.yaml || true
+                    sed -i "s|\\${NAMESPACE}|${DEPLOY_NAMESPACE}|g" argocd/${APP_NAME}-${DEPLOY_ENV}.yaml || true
 
                     git config user.email "jenkins@local"
                     git config user.name "jenkins"
                     git add .
-                    git commit -m "Deploy ${APP_NAME} build ${BUILD_NUMBER}" || echo "No changes"
+                    git commit -m "[${DEPLOY_ENV}] Deploy ${APP_NAME} build ${BUILD_NUMBER}" || echo "No changes"
                     git push origin main
                     '''
                 }
             }
         }
     }
-
     post {
         always {
             sh "docker logout || true"
